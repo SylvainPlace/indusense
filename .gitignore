@@ -9,7 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# Données locales et rapports générés
-/datas/
-/artifacts/ingestion/identities/
+# Jupyter Notebook
 .ipynb_checkpoints/
