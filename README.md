@@ -68,3 +68,13 @@ uv run --locked --env-file .env.bronze python bronze.py telemetry
 ```
 
 Le chargement remplace `bronze.telemetry` dans une transaction, indépendamment des incidents. Le fichier fourni donne **135 626 lignes et 15 colonnes** : sept champs sources, sept champs `_type` et `hash`. Les zéros, la représentation des mesures et les champs vides sont conservés. Seule la clé `BRONZE_ROW_HASH_KEY` est utilisée pour cette source. Un rejeu avec le même fichier et la même clé reproduit les empreintes.
+
+## Charger les machines et la maintenance dans Bronze
+
+```powershell
+uv run --locked --env-file .env.bronze python bronze.py machine
+```
+
+Le chargeur et le notebook partagent la lecture du script avec SQLGlot. Le script source `datas/machine.sql.txt` est analysé sans être exécuté. La commande charge `bronze.machine` (15 lignes) et `bronze.maintenance` (115 lignes) dans une même transaction. Chaque table a 23 colonnes : 11 champs sources, leurs 11 champs `_type` et `hash`.
+
+Les valeurs explicites des `INSERT` sont conservées en texte. Un `NULL` explicite ou une colonne absente de l’`INSERT` donne un `NULL` en Bronze. La chaîne vide reste distincte. Les valeurs par défaut du script ne sont pas évaluées. Le HMAC de ligne est calculé avec la même clé que pour la télémétrie, sur les valeurs dans l’ordre du schéma, avec les valeurs SQL absentes ou nulles encodées en `null` JSON.
