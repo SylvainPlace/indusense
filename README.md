@@ -58,3 +58,13 @@ Les valeurs source restent en texte, y compris les champs vides et les zéros in
 ```powershell
 uv run --locked python -m unittest discover -s tests
 ```
+
+## Charger la télémétrie dans Bronze
+
+Avec le même service `db` et le fichier `.env.bronze` déjà préparé :
+
+```powershell
+uv run --locked --env-file .env.bronze python bronze.py telemetry
+```
+
+Le chargement remplace `bronze.telemetry` dans une transaction, indépendamment des incidents. Le fichier fourni donne **135 626 lignes et 15 colonnes** : sept champs sources, sept champs `_type` et `hash`. Les zéros, la représentation des mesures et les champs vides sont conservés. Seule la clé `BRONZE_ROW_HASH_KEY` est utilisée pour cette source. Un rejeu avec le même fichier et la même clé reproduit les empreintes.
