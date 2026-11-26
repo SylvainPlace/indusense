@@ -183,16 +183,17 @@ def preparer_chargement(
     return volumes
 
 
+def commande_psql(compose: Path, *arguments: str) -> list[str]:
+    return [
+        "docker", "compose", "-f", str(compose), "exec", "-T",
+        "-e", "PGCLIENTENCODING=UTF8", "db", "sh", "-c",
+        'exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"',
+        "psql", *arguments,
+    ]
+
+
 def charger_psql(compose: Path, commandes: BinaryIO) -> None:
-    subprocess.run(
-        [
-            "docker", "compose", "-f", str(compose), "exec", "-T",
-            "-e", "PGCLIENTENCODING=UTF8", "db", "sh", "-c",
-            'exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"',
-        ],
-        stdin=commandes,
-        check=True,
-    )
+    subprocess.run(commande_psql(compose), stdin=commandes, check=True)
 
 
 def lire_secrets(dataset: str) -> tuple[bytes, bytes | None]:
