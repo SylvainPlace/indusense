@@ -35,3 +35,26 @@ Les cartes sont écrites dans `artifacts/ingestion/identities/AAAAMMJJ/` au form
 | `machine.sql.txt` | 10 instructions PostgreSQL, 15 lignes dans les `INSERT` de `machine` et 115 dans ceux de `maintenance`, 11 colonnes par table |
 
 Chaque carte indique le chemin de la source, sa taille, les heures de traitement, l’encodage et le type de chaque colonne. Les valeurs manquantes sont exclues des statistiques. Le notebook analyse le SQL sans exécuter le script. Les statistiques SQL portent sur les valeurs explicites des `INSERT`, et les valeurs calculées en base comme `DEFAULT NOW()` sont signalées comme indisponibles.
+
+## Charger les incidents dans Bronze
+
+Depuis la racine d'Indusense, démarre le service PostgreSQL du Compose fourni dans le dossier parent :
+
+```powershell
+docker compose -f ../docker-compose.yml up -d --wait db
+```
+
+Crée une seule fois un fichier local `.env.bronze` avec deux secrets aléatoires distincts. Git ignore ce fichier. Garde les mêmes secrets pour obtenir les mêmes empreintes et pseudonymes au prochain chargement.
+
+```powershell
+uv run --locked python -c "from pathlib import Path; from secrets import token_hex; f = Path('.env.bronze').open('x'); print('BRONZE_OPERATOR_SALT=' + token_hex(32), file=f); print('BRONZE_ROW_HASH_KEY=' + token_hex(32), file=f); f.close()"
+uv run --locked --env-file .env.bronze python bronze_incidents.py
+```
+
+La commande utilise `psql` dans le conteneur `db`. Chaque chargement remplace le contenu de `bronze.releves_incidents` dans une transaction. Le jeu fourni donne **1 245 lignes et 37 colonnes**. Chaque champ source est suivi de son champ `_type`, issu du notebook, et `hash` termine la ligne.
+
+Les valeurs source restent en texte, y compris les champs vides et les zéros initiaux. Les noms et badges sont remplacés séparément par des SHA-256 salés. Le hash de ligne est un HMAC-SHA‑256 calculé sur les 18 valeurs d'origine, dans l'ordre de l'en-tête, sérialisées en tableau JSON UTF-8 compact. Les autres champs, dont `comment`, sont copiés tels quels. Les commentaires de la source fournie ont été contrôlés pour les mentions exactes des noms complets et badges connus.
+
+```powershell
+uv run --locked python -m unittest discover -s tests
+```
