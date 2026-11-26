@@ -8,7 +8,7 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import BinaryIO
@@ -55,6 +55,7 @@ TYPES_SOURCES = {
 CHAMPS_OPERATEUR = frozenset({"operator_name", "operator_badge"})
 TABLES_MACHINE = ("machine", "maintenance")
 type Valeur = str | None
+type TableBronze = tuple[str, dict[str, str], Iterable[Sequence[Valeur]]]
 
 
 def lire_csv_bronze(source: Path, types: dict[str, str]) -> Iterator[list[str]]:
@@ -129,8 +130,7 @@ def lire_tables_machine(source: Path) -> Iterator[tuple[str, dict[str, str], lis
 
 def ecrire_table_copy(
     flux: BinaryIO, nom_table: str, types: dict[str, str],
-    lignes: Iterable[Sequence[Valeur]], cle_hash: bytes,
-    *, sel_operateur: bytes | None = None, autoriser_null: bool = False,
+    lignes: Iterable[Sequence[Valeur]], *, autoriser_null: bool = False,
 ) -> int:
     table = f'"bronze"."{nom_table}"'
     colonnes = [nom for col in types for nom in (col, f"{col}_type")] + ["hash"]
@@ -151,8 +151,7 @@ def ecrire_table_copy(
     flux.write(("\n".join(entete) + "\n").encode("utf-8"))
     nombre_lignes = 0
     for ligne in lignes:
-        valeurs = transformer_ligne(ligne, types, cle_hash, sel_operateur=sel_operateur)
-        texte = "\t".join(encoder_copy(valeur) for valeur in valeurs)
+        texte = "\t".join(encoder_copy(valeur) for valeur in ligne)
         flux.write((texte + "\n").encode("utf-8"))
         nombre_lignes += 1
     if not nombre_lignes:
@@ -161,26 +160,38 @@ def ecrire_table_copy(
     return nombre_lignes
 
 
+def lire_tables_bronze(source: Path, dataset: str) -> Iterator[TableBronze]:
+    if dataset == "machine":
+        yield from lire_tables_machine(source)
+    else:
+        types = TYPES_SOURCES[dataset]
+        yield dataset, types, lire_csv_bronze(source, types)
+
+
+def preparer_tables(flux: BinaryIO, tables: Iterable[TableBronze]) -> dict[str, int]:
+    """Prépare une transaction COPY à partir de lignes déjà enrichies."""
+    flux.write(b'BEGIN;\nCREATE SCHEMA IF NOT EXISTS "bronze";\n')
+    volumes = {
+        nom: ecrire_table_copy(flux, nom, types, lignes, autoriser_null=nom in TABLES_MACHINE)
+        for nom, types, lignes in tables
+    }
+    flux.write(b"COMMIT;\n")
+    flux.seek(0)
+    return volumes
+
+
 def preparer_chargement(
     flux: BinaryIO, source: Path, dataset: str, cle_hash: bytes,
     *, sel_operateur: bytes | None = None,
 ) -> dict[str, int]:
-    # Tout le chargement partage une transaction, y compris les deux tables SQL.
-    flux.write(b'BEGIN;\nCREATE SCHEMA IF NOT EXISTS "bronze";\n')
-    if dataset == "machine":
-        volumes = {
-            nom: ecrire_table_copy(flux, nom, types, lignes, cle_hash, autoriser_null=True)
-            for nom, types, lignes in lire_tables_machine(source)
-        }
-    else:
-        types = TYPES_SOURCES[dataset]
-        volumes = {dataset: ecrire_table_copy(
-            flux, dataset, types, lire_csv_bronze(source, types), cle_hash,
-            sel_operateur=sel_operateur,
-        )}
-    flux.write(b"COMMIT;\n")
-    flux.seek(0)
-    return volumes
+    def enrichir(types, lignes):
+        for ligne in lignes:
+            yield transformer_ligne(ligne, types, cle_hash, sel_operateur=sel_operateur)
+
+    return preparer_tables(flux, (
+        (nom, types, enrichir(types, lignes))
+        for nom, types, lignes in lire_tables_bronze(source, dataset)
+    ))
 
 
 def commande_psql(compose: Path, *arguments: str) -> list[str]:
@@ -196,13 +207,16 @@ def charger_psql(compose: Path, commandes: BinaryIO) -> None:
     subprocess.run(commande_psql(compose), stdin=commandes, check=True)
 
 
-def lire_secrets(dataset: str) -> tuple[bytes, bytes | None]:
-    cle = os.environ.get("BRONZE_ROW_HASH_KEY", "").strip()
+def lire_secrets(
+    dataset: str, environnement: Mapping[str, str] | None = None
+) -> tuple[bytes, bytes | None]:
+    variables = os.environ if environnement is None else environnement
+    cle = variables.get("BRONZE_ROW_HASH_KEY", "").strip()
     if not cle:
         raise ValueError("BRONZE_ROW_HASH_KEY doit être non vide.")
     if dataset != "releves_incidents":
         return cle.encode("utf-8"), None
-    sel = os.environ.get("BRONZE_OPERATOR_SALT", "").strip()
+    sel = variables.get("BRONZE_OPERATOR_SALT", "").strip()
     if not sel or sel == cle:
         raise ValueError("BRONZE_OPERATOR_SALT doit être non vide et distincte de BRONZE_ROW_HASH_KEY.")
     return cle.encode("utf-8"), sel.encode("utf-8")
