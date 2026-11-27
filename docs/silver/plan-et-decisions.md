@@ -1,6 +1,6 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.4 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.5 · 27 novembre 2026 · Plan avant implémentation
 
 Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
 
@@ -76,6 +76,8 @@ Trois situations observées sont **des signaux à examiner**. Le plan n’en dé
 À vérifier par table et par lot : **lignes Bronze reçues = retenues + copies écartées + conflits non retenus + quarantaine**. Le statut « à valider » est un drapeau de revue. Il n’entre pas dans les exclusions et une ligne retenue qui le porte compte une seule fois.
 
 ## Questions métier à valider
+
+Le [dossier de revue métier](revue-metier.md) regroupe les exemples, les questions à trancher et la fiche de décisions à remplir pendant la réunion.
 
 | Sujet | Question | Comportement proposé en attendant |
 | --- | --- | --- |
