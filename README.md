@@ -35,3 +35,7 @@ Les cartes sont écrites dans `artifacts/ingestion/identities/AAAAMMJJ/` au form
 | `machine.sql.txt` | 10 instructions PostgreSQL, 15 lignes dans les `INSERT` de `machine` et 115 dans ceux de `maintenance`, 11 colonnes par table |
 
 Chaque carte indique le chemin de la source, sa taille, les heures de traitement, l’encodage et le type de chaque colonne. Les valeurs manquantes sont exclues des statistiques. Le notebook analyse le SQL sans exécuter le script. Les statistiques SQL portent sur les valeurs explicites des `INSERT`, et les valeurs calculées en base comme `DEFAULT NOW()` sont signalées comme indisponibles.
+
+## Chargement Bronze
+
+Consulte la section « Étape 2 — Charger les sources dans Bronze » dans [ingestion.ipynb](ingestion.ipynb).

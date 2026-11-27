@@ -11,3 +11,6 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints/
+
+# Bronze local secrets
+/.env.bronze
