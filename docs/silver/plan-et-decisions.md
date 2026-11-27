@@ -1,6 +1,6 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.5 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.6 · 27 novembre 2026 · Plan avant implémentation
 
 Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
 
@@ -21,7 +21,7 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 | **Total** | **3 fichiers** | **137 001** | — |
 
 - La télémétrie contient 1 340 couples machine/horodatage répétés, concernant 2 686 lignes. Toutes les empreintes de ligne de la télémétrie sont distinctes. Ces répétitions ne suffisent donc pas à établir des copies techniques.
-- La télémétrie contient 37 136 lignes où `pieces_produced` dépasse `max_hourly_capacity_pieces` pour la machine correspondante. La cadence, la période couverte par le compteur et la portée de la capacité déclarée restent à confirmer.
+- La télémétrie contient 37 136 lignes où `pieces_produced` dépasse `max_hourly_capacity_pieces` pour la machine correspondante. Ce chiffre est une comparaison brute de deux colonnes. Le métier interprète un dépassement de la capacité horaire comme un surcroît d’activité lorsque les périodes sont comparables. La période couverte par le compteur reste à préciser.
 - La télémétrie contient 995 pressions vides, 958 vitesses de rotation vides et 894 températures vides. Ce sont des absences par champ. Une ligne peut apparaître dans plusieurs compteurs.
 - Les références machine présentes correspondent au référentiel. Les 25 références explicites de maintenance vers un incident correspondent également. Les 90 références de maintenance non renseignées restent des absences.
 - Dans le script SQL, certaines colonnes ont un défaut déclaré mais aucune valeur explicite dans les `INSERT`. Par exemple, `created_at` et `updated_at` restent à `NULL` dans Bronze.
@@ -33,13 +33,19 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 | SIL-01 | Proposée | Transformer un lot Bronze identifié par son `run_id`. Relever au départ son historique, les SHA‑256 des sources, les volumes et la version du traitement. Cela permet de comparer le résultat au lot réellement lu. | Manifeste par lot et par table, rapprochement avec `bronze.ingestion_runs`. |
 | SIL-02 | Proposée | Conserver dans Silver la provenance de chaque ligne via la table source, le `run_id` et le hash Bronze. Deux copies exactes peuvent partager ces valeurs. Pour leur audit, compter les occurrences et documenter l’éventuel rang utilisé dans le lot. | Exemple de remontée d’une ligne et registre indiquant la multiplicité des copies. |
 | SIL-03 | Proposée | Garder les identifiants sous forme de texte et convertir les mesures, dates et indicateurs selon le dictionnaire, avec les unités source connues. Conserver l’accès aux valeurs d’origine par le lien Bronze. Une conversion impossible reçoit un motif explicite. | Dictionnaire complet, exemples avant/après et journal des erreurs de conversion. |
-| SIL-04 | Proposée, fuseau ouvert | Combiner la date et l’heure des incidents. Conserver les horodatages CSV sans fuseau jusqu’à confirmation de leur horloge source. Pour la maintenance, exploiter les décalages déjà explicites. Garder l’heure d’ingestion séparée de l’heure métier. | Cas de contrôle pour une date sans fuseau, un décalage explicite et une date invalide. |
+| SIL-04 | UTC et instant de saisie confirmés | Les deux CSV utilisent UTC. Combiner la date et l’heure des incidents dans un horodatage de saisie UTC. Séparer la saisie, le relevé et l’ingestion. Pour la maintenance, exploiter les décalages déjà explicites. | Vérifier qu’un horaire UTC garde la même heure et que l’horodatage d’incident est nommé comme un instant de saisie. |
 | SIL-05 | Proposée, grain ouvert | Conserver les relevés dont le couple machine/horodatage se répète et les signaler pour revue. Ce couple est une clé candidate, car aucun identifiant de capteur ni règle de révision n’est confirmé. | Registre des 1 340 couples candidats pour le lot observé et contrôle des 2 686 lignes concernées. |
 | SIL-06 | Proposée | Avec une clé métier validée, écarter une copie seulement si son contenu source est identique à celui de l’occurrence conservée. Pour la même clé et des contenus différents, consigner un conflit et attendre une règle de priorité. | Cas de test distinguant copie, conflit et deux observations légitimes au même instant. |
 | SIL-07 | Proposée | Laisser les mesures manquantes à `NULL`. Consigner les erreurs de conversion. Si une colonne indispensable à l’identité de l’événement est inutilisable, mettre la ligne en quarantaine avec le motif. Une mesure facultative invalide peut rester dans une ligne retenue avec un drapeau. | Compteurs par colonne, motif par ligne écartée et cas de test pour les deux niveaux de gravité. |
-| SIL-08 | Proposée, limites ouvertes | Signaler les dépassements de capacité pour revue. Conserver les mesures tant que l’unité, la cadence et la limite métier ne sont pas validées. Laisser les manquants sans estimation en l’absence de règle validée. | Indicateur de dépassement, décompte avant/après et décision métier datée avant toute exclusion ou imputation. |
+| SIL-08 | Interprétation confirmée, période du compteur ouverte | Le dépassement de la capacité horaire indique un surcroît d’activité si le compteur et la capacité portent sur des périodes comparables. Conserver les lignes et distinguer la comparaison brute du signal métier. L’imputation reste à valider. | Valider la fenêtre du compteur puis mesurer les surcroîts d’activité. Documenter tout changement ou toute estimation avant application. |
 | SIL-09 | Proposée | Conserver la pseudonymisation en Silver. Relire les champs libres avant publication et limiter les échantillons publics aux champs utiles à la vérification. | Contrôle de l’échantillon publié et absence de noms ou badges source en clair. |
 | SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
+
+## Précisions métier sur les mesures et les horodatages
+
+Les dernières précisions remplacent les hypothèses précédentes sur l’heure de l’anomalie, l’heure couverte par le compteur, la pression relative et le caractère instantané des mesures. Le nombre de pièces est rapporté au moment du relevé. Cette information établit quand la valeur est connue. Elle laisse ouverte la question de l’intervalle compté ou du caractère cumulatif. La température et la pression interne sont des moyennes sur un intervalle dont les bornes restent à préciser.
+
+Le rapprochement antérieur entre champs vides et signalements d’arrêt comparait les horaires saisis. Il ne permet pas d’écarter un lien avec un arrêt réel. Le lien vers l’incident reste consultable, avec l’heure de saisie comme repère.
 
 ## Validation métier avant toute modification
 
@@ -82,9 +88,9 @@ Le [dossier de revue métier](revue-metier.md) regroupe les exemples, les questi
 | Sujet | Question | Comportement proposé en attendant |
 | --- | --- | --- |
 | Identité d’un relevé | Existe-t-il un identifiant de mesure ou de capteur, une séquence ou un ordre de révision ? | Garder les collisions de la clé candidate et les signaler. |
-| Horloge des CSV | Quel est le fuseau de la télémétrie et de la date/heure des incidents ? | Conserver le temps local de la source et laisser le fuseau indéterminé. |
-| Cadence et capacité | À quelle période se rapporte `pieces_produced` ? La capacité est-elle nominale ou une limite validée ? | Un dépassement déclenche un drapeau. |
-| Unités et absences | La pression est-elle absolue ou relative ? Quels codes désignent une absence ou une panne de capteur ? | Conserver l’unité indiquée par la source. Traiter les champs vides comme absents et documenter tout autre code avant de le convertir. |
+| Horloge des CSV | UTC confirmé pour les deux CSV. Les incidents sont horodatés au moment de la saisie. | Proposer des champs explicitement nommés en UTC et distinguer l’heure de saisie de l’heure réelle de l’anomalie. |
+| Cadence et capacité | Que compte le nombre de pièces disponible au moment du relevé : une période définie ou un cumul ? | La comparaison brute reste visible. Un dépassement comparable se lit comme un surcroît d’activité. |
+| Unités, fenêtres et absences | La pression interne est en bar. Température et pression sont des moyennes. Quelles sont les bornes exactes de leur intervalle et quels codes désignent une absence ou une panne de capteur ? | Conserver les valeurs et unités sources. Traiter les champs vides comme absents et documenter tout autre code avant de le convertir. |
 | Périodes sans mesure | Dispose-t-on des états machine et d’une durée maximale d’estimation validée ? | Conserver les trous. |
 
 Les réponses sont à consigner avec la date, la personne ou la source qui les valide, les règles concernées et l’effet sur les résultats déjà produits.
@@ -100,8 +106,8 @@ Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels
 | Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
 | --- | --- | --- | --- | --- |
 | `incident_id` | `TEXT` | — | Garder le code intact, zéros compris. Clé candidate de l’incident. | Unicité entre lots, réouvertures et révisions d’un incident. |
-| `date` | `DATE` | `AAAA-MM-JJ` | Interpréter la date civile. Conserver la provenance Bronze. | Date de survenue, de constat ou de saisie. |
-| `time` | `TIME WITHOUT TIME ZONE` | `HH:MM` | Interpréter l’heure à la précision de la minute. | Horloge source, fuseau et changement d’heure. |
+| `date` | `DATE` | `AAAA-MM-JJ` | Interpréter la date civile. Conserver la provenance Bronze. | Date attribuée automatiquement lors de la saisie. Le moment de l’anomalie peut être antérieur. |
+| `time` | `TIME WITHOUT TIME ZONE` | `HH:MM` | Interpréter l’heure de saisie UTC à la précision de la minute. | Confirmer la précision disponible si une analyse exige les secondes. |
 | `operator_name` | `TEXT` | Pseudonyme SHA‑256 salé | Garder le pseudonyme Bronze si l’usage le justifie. | Utilité analytique, accès et politique de publication. |
 | `machine_id` | `TEXT` | Code machine | Garder le texte. Proposer le rapprochement avec `machine.machine_code`. | Stabilité du code et traitement des références inconnues. |
 | `severity` | `SMALLINT` | Score ordinal, valeurs observées 2 à 5 | Lire le score entier. Conserver la valeur et signaler les codes hors du domaine approuvé. | Échelle complète, définition de chaque niveau et sens de l’ordre. |
@@ -123,12 +129,12 @@ Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels
 | Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
 | --- | --- | --- | --- | --- |
 | `machine_id` | `TEXT` | Code machine | Garder le code. Rapprocher du référentiel avec la correspondance approuvée. | Stabilité du code et présence éventuelle d’un identifiant de capteur. |
-| `timestamp` | `TIMESTAMP WITHOUT TIME ZONE` | Date et heure à la seconde, fuseau absent | Préserver l’heure enregistrée. Signaler les couples machine/heure répétés pour revue. | Fuseau, instant de mesure ou de réception, cadence et clé réelle d’un relevé. |
-| `temperature_c` | `NUMERIC` | °C d’après le nom | Lire le décimal sans arrondi. Garder les absences et les pics visibles. | Unité, emplacement du capteur, précision et plages par régime. |
-| `pressure_bar` | `NUMERIC` | bar d’après le nom | Lire le décimal sans conversion d’unité. | Pression absolue ou relative, précision et limites par équipement. |
+| `timestamp` | `TIMESTAMP WITH TIME ZONE` | Horodatage du relevé à la seconde, UTC confirmé par le métier | Donner le type PostgreSQL avec fuseau en préservant l’heure UTC. | Confirmer les bornes temporelles des mesures associées au relevé. |
+| `temperature_c` | `NUMERIC` | °C, moyenne sur un intervalle | Lire le décimal sans arrondi. Garder les absences et les pics visibles. | Bornes de l’intervalle, emplacement du capteur et précision. |
+| `pressure_bar` | `NUMERIC` | bar, pression interne moyenne sur un intervalle | Lire le décimal sans conversion d’unité. | Bornes de l’intervalle et référence instrumentale si une conversion l’exige. |
 | `voltage_mean_v` | `NUMERIC` | V d’après le nom | Lire la moyenne fournie, sans la recalculer. | Fenêtre de moyenne, tension mesurée et unité. |
 | `rotation_mean_rpm` | `NUMERIC` | tr/min d’après le nom | Lire la moyenne fournie, sans imputer les valeurs vides. | Fenêtre de moyenne, sens de zéro et régime machine. |
-| `pieces_produced` | `BIGINT` | Nombre entier de pièces, période inconnue | Lire le compteur entier. Signaler les dépassements de capacité déclarée pour revue. | Compteur cumulatif ou volume par période, remises à zéro et comparabilité à la capacité horaire. |
+| `pieces_produced` | `BIGINT` | Nombre entier de pièces au moment du relevé | Lire la valeur entière. Comparer à la capacité horaire une fois le périmètre temporel confirmé. | Cumul ou volume par période, bornes de la période et remises à zéro. |
 
 ### Référentiel machine — 11 colonnes
 
@@ -137,7 +143,7 @@ Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels
 | `machine_code` | `TEXT` | Code machine | Garder la clé primaire déclarée dans le SQL sous forme de texte. | Réutilisation des codes et rapprochement historique. |
 | `commissioning_date` | `DATE` | `AAAA-MM-JJ` | Lire la date de mise en service déclarée. | Date de première mise en service ou de remise en service. |
 | `max_daily_capacity` | `INTEGER` | Capacité par jour, unité à confirmer | Lire l’entier déclaré. Utiliser la contrainte source positive comme point à vérifier. | Pièces par jour ou autre unité, régime de référence et capacité nominale. |
-| `max_hourly_capacity_pieces` | `INTEGER` | Pièces/heure d’après le nom | Lire l’entier déclaré. Le comparer à la télémétrie à titre de diagnostic. | Limite physique ou cadence nominale, conditions et période de comparaison. |
+| `max_hourly_capacity_pieces` | `INTEGER` | Pièces/heure d’après le nom | Lire l’entier déclaré. Le comparer à la télémétrie à titre de diagnostic. | Conditions de comparaison avec le compteur. Un dépassement comparable est interprété comme un surcroît d’activité. |
 | `model` | `TEXT` | Code ou libellé de modèle | Conserver le libellé source. Poser les regroupements en revue. | Catalogue des modèles et équivalences de libellés. |
 | `production_line` | `TEXT` | Code de ligne de production | Garder le code. | Affectations successives et dates de validité. |
 | `location` | `TEXT` | Code ou libellé de localisation | Garder la localisation déclarée. | Niveau du référentiel et suivi des déplacements. |
@@ -169,7 +175,7 @@ Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels
 | `bronze_run_id` depuis `run_id` | `UUID` | Conserver le lien avec `bronze.ingestion_runs` et confirmer la politique d’historique Bronze. |
 | `bronze_hash` depuis `hash` | `TEXT` | Recopier le hash Bronze. Les lignes identiques peuvent le partager. Valider un identifiant d’occurrence si le suivi doit distinguer deux copies exactes. |
 | Colonnes `_type` du Bronze | Étiquettes de provenance | Conserver leur accès dans Bronze. Les types PostgreSQL du Silver seront définis par le contrat approuvé. |
-| `occurred_at_local` depuis `date` et `time` | `TIMESTAMP WITHOUT TIME ZONE` | Proposer un horodatage d’incident combiné. Confirmer le sens des deux champs et le fuseau avant toute normalisation. |
+| `incident_recorded_at_utc` depuis `date` et `time` | `TIMESTAMP WITH TIME ZONE` | Proposer un horodatage combiné de la saisie. Pour une analyse temporelle, vérifier à quel moment cette information était disponible. |
 | Date et SHA‑256 du lot d’entrée | `TIMESTAMP WITH TIME ZONE` et `TEXT` | Reprendre le manifeste de lot pour tracer l’ingestion. La date métier reste distincte de la date de chargement. |
 
 Les domaines déclarés dans le script et les valeurs observées sont des éléments de discussion. Pour chaque règle approuvée, renseigner dans le registre le responsable, la date, le périmètre, la preuve et la version du contrat.
