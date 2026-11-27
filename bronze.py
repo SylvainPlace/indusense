@@ -12,6 +12,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import BinaryIO
+from uuid import UUID, uuid4
 
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError, TokenError
@@ -168,13 +169,65 @@ def lire_tables_bronze(source: Path, dataset: str) -> Iterator[TableBronze]:
         yield dataset, types, lire_csv_bronze(source, types)
 
 
-def preparer_tables(flux: BinaryIO, tables: Iterable[TableBronze]) -> dict[str, int]:
-    """Prépare une transaction COPY à partir de lignes déjà enrichies."""
+def sha256_source(source: Path) -> str:
+    with source.open("rb") as fichier:
+        return hashlib.file_digest(fichier, "sha256").hexdigest()
+
+
+def commit_git() -> Valeur:
+    try:
+        resultat = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return resultat.stdout.strip()
+
+
+def ecrire_historique(
+    flux: BinaryIO, run_id: UUID, volumes: Mapping[str, int],
+    sources: Mapping[str, Path], empreintes: Mapping[Path, str],
+) -> None:
+    """Ajoute les entrées du lot à la transaction qui charge ses données."""
+    flux.write(b"""CREATE TABLE IF NOT EXISTS bronze.ingestion_runs (
+    run_id UUID NOT NULL,
+    loaded_at TIMESTAMPTZ NOT NULL DEFAULT transaction_timestamp(),
+    target_table TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL CHECK (source_sha256 ~ '^[0-9a-f]{64}$'),
+    git_commit TEXT,
+    row_count BIGINT NOT NULL CHECK (row_count >= 0),
+    PRIMARY KEY (run_id, target_table)
+);
+COPY bronze.ingestion_runs
+    (run_id, target_table, source_file, source_sha256, git_commit, row_count) FROM STDIN;
+""")
+    revision = commit_git()
+    for table, volume in volumes.items():
+        source = sources[table]
+        ligne = (str(run_id), table, source.name, empreintes[source], revision, str(volume))
+        flux.write(("\t".join(encoder_copy(valeur) for valeur in ligne) + "\n").encode("utf-8"))
+    flux.write(b"\\.\n")
+
+
+def preparer_tables(
+    flux: BinaryIO, tables: Iterable[TableBronze], *, run_id: UUID,
+    sources: Mapping[str, Path], empreintes: Mapping[Path, str],
+) -> dict[str, int]:
+    """Prépare le chargement des tables et l’historique dans la même transaction."""
     flux.write(b'BEGIN;\nCREATE SCHEMA IF NOT EXISTS "bronze";\n')
     volumes = {
         nom: ecrire_table_copy(flux, nom, types, lignes, autoriser_null=nom in TABLES_MACHINE)
         for nom, types, lignes in tables
     }
+    for source in dict.fromkeys(sources.values()):
+        if sha256_source(source) != empreintes[source]:
+            raise ValueError(f"{source.name} a changé pendant la préparation du chargement.")
+    ecrire_historique(flux, run_id, volumes, sources, empreintes)
     flux.write(b"COMMIT;\n")
     flux.seek(0)
     return volumes
@@ -188,10 +241,16 @@ def preparer_chargement(
         for ligne in lignes:
             yield transformer_ligne(ligne, types, cle_hash, sel_operateur=sel_operateur)
 
-    return preparer_tables(flux, (
+    empreintes = {source: sha256_source(source)}
+    noms = TABLES_MACHINE if dataset == "machine" else (dataset,)
+    tables = (
         (nom, types, enrichir(types, lignes))
         for nom, types, lignes in lire_tables_bronze(source, dataset)
-    ))
+    )
+    return preparer_tables(
+        flux, tables, run_id=uuid4(),
+        sources=dict.fromkeys(noms, source), empreintes=empreintes,
+    )
 
 
 def commande_psql(compose: Path, *arguments: str) -> list[str]:
