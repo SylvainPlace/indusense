@@ -1,6 +1,6 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.7 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.8 · 27 novembre 2026 · Plan avant implémentation
 
 Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
 
@@ -37,13 +37,13 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 | SIL-05 | Proposée, grain ouvert | Conserver les relevés dont le couple machine/horodatage se répète et les signaler pour revue. Ce couple est une clé candidate, car aucun identifiant de capteur ni règle de révision n’est confirmé. | Registre des 1 340 couples candidats pour le lot observé et contrôle des 2 686 lignes concernées. |
 | SIL-06 | Proposée | Avec une clé métier validée, écarter une copie seulement si son contenu source est identique à celui de l’occurrence conservée. Pour la même clé et des contenus différents, consigner un conflit et attendre une règle de priorité. | Cas de test distinguant copie, conflit et deux observations légitimes au même instant. |
 | SIL-07 | Proposée | Laisser les mesures manquantes à `NULL`. Consigner les erreurs de conversion. Si une colonne indispensable à l’identité de l’événement est inutilisable, mettre la ligne en quarantaine avec le motif. Une mesure facultative invalide peut rester dans une ligne retenue avec un drapeau. | Compteurs par colonne, motif par ligne écartée et cas de test pour les deux niveaux de gravité. |
-| SIL-08 | Unité horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. L’imputation reste à valider. | Recompter les surcroîts d’activité après sélection de la première occurrence. Confirmer les bornes horaires avant un rapprochement temporel. Documenter tout changement ou toute estimation avant application. |
+| SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. L’imputation reste à valider. | Recompter les surcroîts d’activité après sélection de la première occurrence. Vérifier l’alignement sur l’heure UTC qui précède le relevé lors des rapprochements temporels. Documenter tout changement ou toute estimation avant application. |
 | SIL-09 | Proposée | Conserver la pseudonymisation en Silver. Relire les champs libres avant publication et limiter les échantillons publics aux champs utiles à la vérification. | Contrôle de l’échantillon publié et absence de noms ou badges source en clair. |
 | SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
 
 ## Précisions métier sur les mesures et les horodatages
 
-Les dernières précisions remplacent les hypothèses précédentes sur l’heure de l’anomalie, l’heure couverte par le compteur, la pression relative et le caractère instantané des mesures. Le nombre de pièces produites par heure est rapporté au moment du relevé. Les bornes exactes de l’heure associée à l’horodatage restent à préciser. La température et la pression interne sont des moyennes sur un intervalle dont les bornes restent à préciser.
+Les dernières précisions remplacent les hypothèses précédentes sur l’heure de l’anomalie, l’heure couverte par le compteur, la pression relative et le caractère instantané des mesures. Le nombre de pièces produites pendant l’heure précédente est rapporté au moment du relevé. À 06:00 UTC, il couvre la période de 05:00 à 06:00 UTC. La température et la pression interne sont des moyennes sur un intervalle dont les bornes restent à préciser.
 
 Le rapprochement antérieur entre champs vides et signalements d’arrêt comparait les horaires saisis. Il ne permet pas d’écarter un lien avec un arrêt réel. Le lien vers l’incident reste consultable, avec l’heure de saisie comme repère.
 
@@ -89,7 +89,7 @@ Le [dossier de revue métier](revue-metier.md) regroupe les exemples, les questi
 | --- | --- | --- |
 | Identité d’un relevé | Existe-t-il un identifiant de mesure ou de capteur, une séquence ou un ordre de révision ? | Garder les collisions de la clé candidate et les signaler. |
 | Horloge des CSV | UTC confirmé pour les deux CSV. Les incidents sont horodatés au moment de la saisie. | Proposer des champs explicitement nommés en UTC et distinguer l’heure de saisie de l’heure réelle de l’anomalie. |
-| Cadence et capacité | Le compteur est horaire. Quelle heure exacte couvre-t-il à l’horodatage du relevé ? | Comparer le nombre horaire à la capacité horaire et signaler un surcroît d’activité. Attendre les bornes pour les rapprochements dans le temps. |
+| Cadence et capacité | Le compteur couvre l’heure précédente. La capacité est horaire. | Comparer le nombre horaire à la capacité et signaler un surcroît d’activité. Aligner les rapprochements sur l’heure précédant le relevé. |
 | Unités, fenêtres et absences | La pression interne est en bar. Température et pression sont des moyennes. Quelles sont les bornes exactes de leur intervalle et quels codes désignent une absence ou une panne de capteur ? | Conserver les valeurs et unités sources. Traiter les champs vides comme absents et documenter tout autre code avant de le convertir. |
 | Périodes sans mesure | Dispose-t-on des états machine et d’une durée maximale d’estimation validée ? | Conserver les trous. |
 
@@ -134,7 +134,7 @@ Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels
 | `pressure_bar` | `NUMERIC` | bar, pression interne moyenne sur un intervalle | Lire le décimal sans conversion d’unité. | Bornes de l’intervalle et référence instrumentale si une conversion l’exige. |
 | `voltage_mean_v` | `NUMERIC` | V d’après le nom | Lire la moyenne fournie, sans la recalculer. | Fenêtre de moyenne, tension mesurée et unité. |
 | `rotation_mean_rpm` | `NUMERIC` | tr/min d’après le nom | Lire la moyenne fournie, sans imputer les valeurs vides. | Fenêtre de moyenne, sens de zéro et régime machine. |
-| `pieces_produced` | `BIGINT` | Nombre entier de pièces produites par heure | Lire la valeur entière. Signaler un surcroît d’activité au-delà de la capacité horaire sans écarter la ligne. | Heure exacte associée à l’horodatage. |
+| `pieces_produced` | `BIGINT` | Nombre entier de pièces produites pendant l’heure précédente | Lire la valeur entière. Signaler un surcroît d’activité au-delà de la capacité horaire sans écarter la ligne. | Fenêtre confirmée : à 06:00 UTC, production de 05:00 à 06:00 UTC. |
 
 ### Référentiel machine — 11 colonnes
 
