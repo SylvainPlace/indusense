@@ -1,8 +1,8 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.9 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 1.0 · 27 novembre 2026 · Contrat du Silver du lot observé
 
-Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
+Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Le diagnostic n’a écarté aucune ligne. L’étape Silver applique uniquement les règles validées ci-dessous.
 
 ## Diagnostic disponible dans le notebook
 
@@ -36,8 +36,8 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 | SIL-04 | UTC et instant de saisie confirmés | Les deux CSV utilisent UTC. Combiner la date et l’heure des incidents dans un horodatage de saisie UTC. Séparer la saisie, le relevé et l’ingestion. Pour la maintenance, exploiter les décalages déjà explicites. | Vérifier qu’un horaire UTC garde la même heure et que l’horodatage d’incident est nommé comme un instant de saisie. |
 | SIL-05 | Validée pour telemetry.csv | Dans ce fichier, un même couple `(machine_id, timestamp)` représente une réémission. Garder la première occurrence dans l’ordre du CSV, même si les valeurs ultérieures diffèrent. | Vérifier le SHA‑256 du CSV, retrouver l’ordre source et journaliser les 1 346 réémissions attendues sur le lot observé. |
 | SIL-06 | Règle télémétrie validée, autres sources à revoir au cas par cas | La télémétrie applique SIL-05. Une copie ou un conflit dans une autre source fait l’objet d’une revue avant toute exclusion. | Tracer la ligne conservée et les réémissions. Vérifier que les autres sources ne subissent aucune déduplication automatique. |
-| SIL-07 | Revue au cas par cas, imputation en attente | Une clé inutilisable ou une référence machine inconnue est signalée et n’entraîne pas d’exclusion automatique. Une maintenance sans incident associé est valide, avec `related_incident_id` à `NULL` et sans signalement. | Vérifier les motifs, les lignes conservées et le traitement des références facultatives. |
-| SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. L’imputation reste à valider. | Recompter les surcroîts d’activité après sélection de la première occurrence. Vérifier l’alignement sur l’heure UTC qui précède le relevé lors des rapprochements temporels. Documenter tout changement ou toute estimation avant application. |
+| SIL-07 | Maintien des relevés et absence d’imputation validés | Une clé inutilisable ou une référence machine inconnue est signalée et n’entraîne pas d’exclusion automatique. Une maintenance sans incident associé est valide, avec `related_incident_id` à `NULL` et sans signalement. Conserver les relevés avec mesures manquantes à `NULL`, sans imputation, et tracer les périodes. | Vérifier les motifs, les lignes conservées et le traitement des références facultatives. |
+| SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. Les mesures manquantes restent à `NULL`, sans imputation. | Recompter les surcroîts d’activité après sélection de la première occurrence. Vérifier l’alignement sur l’heure UTC qui précède le relevé lors des rapprochements temporels. Documenter tout changement ou toute estimation avant application. |
 | SIL-09 | Validée pour les incidents | `operator_name`, `operator_badge` et `comment` restent uniquement dans Bronze. Le lien de provenance permet de retrouver le commentaire si nécessaire. | Vérifier leur absence des colonnes Silver et des échantillons Silver publiés. |
 | SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
 
@@ -90,7 +90,7 @@ Le [dossier de revue métier](revue-metier.md) regroupe les exemples, les questi
 | Identité d’un relevé | Pour la télémétrie, le couple machine/UTC et la priorité à la première ligne du CSV sont confirmés. | Appliquer SIL-05 uniquement au fichier de télémétrie et tracer les réémissions. |
 | Horloge des CSV | UTC confirmé pour les deux CSV. Les incidents sont horodatés au moment de la saisie. | Proposer des champs explicitement nommés en UTC et distinguer l’heure de saisie de l’heure réelle de l’anomalie. |
 | Cadence et capacité | Le compteur couvre l’heure précédente. La capacité est horaire. | Comparer le nombre horaire à la capacité et signaler un surcroît d’activité. Aligner les rapprochements sur l’heure précédant le relevé. |
-| Unités, fenêtres et absences | Pression interne en bar. Les moyennes de température, pression, tension et rotation couvrent l’heure précédente. Les motifs exacts des absences restent inconnus. | Conserver les unités confirmées : °C, bar, V et tr/min. L’imputation reste à valider. |
+| Unités, fenêtres et absences | Pression interne en bar. Les moyennes de température, pression, tension et rotation couvrent l’heure précédente. Les motifs exacts des absences restent inconnus. | Conserver les unités confirmées : °C, bar, V et tr/min. Les mesures manquantes restent à `NULL`, sans imputation. |
 | Périodes sans mesure | Signaler toute heure sans relevé. Préciser l’état d’arrêt lorsqu’il est connu. | Signaler le trou et indiquer l’état inconnu si aucune information fiable n’existe. |
 
 Les réponses sont à consigner avec la date, la personne ou la source qui les valide, les règles concernées et l’effet sur les résultats déjà produits.
@@ -135,7 +135,7 @@ Les incidents sont saisis par les opérateurs. Pour leurs neuf indicateurs, 1 si
 | `temperature_c` | `NUMERIC` | °C, moyenne de l’heure précédente | Lire le décimal sans arrondi. Garder les absences et les pics visibles. | Fenêtre confirmée : 05:00–06:00 pour un relevé à 06:00 UTC. |
 | `pressure_bar` | `NUMERIC` | bar, pression interne moyenne de l’heure précédente | Lire le décimal sans arrondi. Conserver l’unité et la référence instrumentale source. | Fenêtre confirmée : 05:00–06:00 pour un relevé à 06:00 UTC. |
 | `voltage_mean_v` | `NUMERIC` | V, moyenne de l’heure précédente | Lire le décimal sans arrondi. Conserver la moyenne fournie. | Fenêtre confirmée : 05:00–06:00 pour un relevé à 06:00 UTC. |
-| `rotation_mean_rpm` | `NUMERIC` | tr/min, moyenne de l’heure précédente | Lire le décimal sans arrondi. Conserver la moyenne fournie. L’imputation reste à valider. | Fenêtre confirmée : 05:00–06:00 pour un relevé à 06:00 UTC. |
+| `rotation_mean_rpm` | `NUMERIC` | tr/min, moyenne de l’heure précédente | Lire le décimal sans arrondi. Conserver la moyenne fournie. Les mesures manquantes restent à `NULL`, sans imputation. | Fenêtre confirmée : 05:00–06:00 pour un relevé à 06:00 UTC. |
 | `pieces_produced` | `BIGINT` | Nombre entier de pièces produites pendant l’heure précédente | Lire la valeur entière. Signaler un surcroît d’activité au-delà de la capacité horaire sans écarter la ligne. | Fenêtre confirmée : à 06:00 UTC, production de 05:00 à 06:00 UTC. |
 
 ### Référentiel machine — 11 colonnes
@@ -181,6 +181,12 @@ Les incidents sont saisis par les opérateurs. Pour leurs neuf indicateurs, 1 si
 | Date et SHA‑256 du lot d’entrée | `TIMESTAMP WITH TIME ZONE` et `TEXT` | Reprendre le manifeste de lot pour tracer l’ingestion. La date métier reste distincte de la date de chargement. |
 
 Les domaines déclarés dans le script et les valeurs observées sont des éléments de discussion. Pour chaque règle approuvée, renseigner dans le registre le responsable, la date, le périmètre, la preuve et la version du contrat.
+
+## Règle validée pour les mesures manquantes
+
+Après sélection de la première occurrence, le lot de télémétrie contient 134 280 relevés. Le métier valide de conserver les 2 793 relevés incomplets : 982 pressions, 948 vitesses de rotation et 882 températures restent à `NULL`. Le registre des périodes précise la machine, la mesure, les bornes UTC et le nombre de relevés concernés. La cause reste inconnue.
+
+Le [notebook](../../ingestion.ipynb) exécute le traitement du contrat `silver-1.0`. Les tables complètes sont en PostgreSQL et les [artefacts du lot](../../artifacts/silver/silver-1.0/) rassemblent le manifeste, les réémissions, les périodes, un échantillon et le rapport qualité. Les données Bronze restent consultables avec leur lot et leur hash.
 
 ## Ordre de réalisation et livrables
 
