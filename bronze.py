@@ -131,29 +131,32 @@ def lire_tables_machine(source: Path) -> Iterator[tuple[str, dict[str, str], lis
 
 def ecrire_table_copy(
     flux: BinaryIO, nom_table: str, types: dict[str, str],
-    lignes: Iterable[Sequence[Valeur]], *, autoriser_null: bool = False,
+    lignes: Iterable[Sequence[Valeur]], *, run_id: UUID, autoriser_null: bool = False,
 ) -> int:
     table = f'"bronze"."{nom_table}"'
-    colonnes = [nom for col in types for nom in (col, f"{col}_type")] + ["hash"]
+    colonnes = [nom for col in types for nom in (col, f"{col}_type")] + ["hash", "run_id"]
     if len(set(colonnes)) != len(colonnes) or any(
         not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", nom) for nom in colonnes
     ):
         raise ValueError(f"{nom_table} : noms de colonnes Bronze invalides ou en conflit.")
     definitions = ", ".join(
         f'"{nom}" TEXT' + ("" if autoriser_null and nom in types else " NOT NULL")
-        for nom in colonnes
+        for nom in colonnes[:-1]
     )
     noms_copy = ", ".join(f'"{nom}"' for nom in colonnes)
     entete = [
-        f"CREATE TABLE IF NOT EXISTS {table} ({definitions});",
+        f"CREATE TABLE IF NOT EXISTS {table} ({definitions}, run_id UUID NOT NULL);",
         f"TRUNCATE TABLE {table};",
+        # Les tables des chargements précédents peuvent ne pas avoir cette colonne.
+        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS run_id UUID;",
+        f"ALTER TABLE {table} ALTER COLUMN run_id SET NOT NULL;",
         f"COPY {table} ({noms_copy}) FROM STDIN;",
     ]
     flux.write(("\n".join(entete) + "\n").encode("utf-8"))
     nombre_lignes = 0
     for ligne in lignes:
         texte = "\t".join(encoder_copy(valeur) for valeur in ligne)
-        flux.write((texte + "\n").encode("utf-8"))
+        flux.write((texte + f"\t{run_id}\n").encode("utf-8"))
         nombre_lignes += 1
     if not nombre_lignes:
         raise ValueError(f"{nom_table} : aucune ligne à charger.")
@@ -221,7 +224,9 @@ def preparer_tables(
     """Prépare le chargement des tables et l’historique dans la même transaction."""
     flux.write(b'BEGIN;\nCREATE SCHEMA IF NOT EXISTS "bronze";\n')
     volumes = {
-        nom: ecrire_table_copy(flux, nom, types, lignes, autoriser_null=nom in TABLES_MACHINE)
+        nom: ecrire_table_copy(
+            flux, nom, types, lignes, run_id=run_id, autoriser_null=nom in TABLES_MACHINE
+        )
         for nom, types, lignes in tables
     }
     for source in dict.fromkeys(sources.values()):

@@ -19,6 +19,7 @@ class TestHistoriqueBronze(unittest.TestCase):
                 writer.writerows([ligne, ligne])
 
             lots = []
+            valeurs_et_hash = []
             for _ in range(2):
                 flux = io.BytesIO()
                 self.assertEqual(
@@ -30,9 +31,14 @@ class TestHistoriqueBronze(unittest.TestCase):
                 self.assertEqual(len(lignes_bronze), 2)
                 self.assertEqual(lignes_bronze[0], lignes_bronze[1])
                 historique = script.rsplit("FROM STDIN;\n", 1)[1].splitlines()[0].split("\t")
-                lots.append(UUID(historique[0]))
+                lot = UUID(historique[0])
+                lots.append(lot)
+                valeurs, lot_ligne = lignes_bronze[0].rsplit("\t", 1)
+                self.assertEqual(UUID(lot_ligne), lot)
+                valeurs_et_hash.append(valeurs)
                 self.assertEqual(historique[1:4], ["telemetry", source.name, sha256_source(source)])
                 self.assertEqual(historique[-1], "2")
                 self.assertTrue(script.endswith("\\.\nCOMMIT;\n"))
 
             self.assertNotEqual(*lots)
+            self.assertEqual(*valeurs_et_hash)
