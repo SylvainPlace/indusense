@@ -1,8 +1,14 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.2 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.3 · 27 novembre 2026 · Plan avant implémentation
 
 Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
+
+## Diagnostic disponible dans le notebook
+
+La section « Étape 3 — Diagnostic Silver en lecture seule » du [notebook d’ingestion](../../ingestion.ipynb) contient le manifeste du lot, le bilan des motifs et des exemples rattachés au lot et au hash de la ligne Bronze. Le notebook réutilise la base locale démarrée. Le rechargement Bronze est désactivé par défaut.
+
+Le diagnostic vérifie les formats sondés, les clés candidates, les références et les absences. Il signale les dépassements de capacité déclarée pour revue et laisse les limites physiques non validées au statut « Non évalué ». Les données et les motifs constatés restent distincts des décisions métier.
 
 ## Portrait de départ
 
