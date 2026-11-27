@@ -1,0 +1,5 @@
+source_table,bronze_run_id,source_file,source_sha256,version_contrat,bronze_lignes,silver_lignes,reemissions_ecartees
+telemetry,98941e5d-36b2-4b32-8245-7489c8e2ee87,telemetry.csv,68ec8dd09b691e6810d26626d17191414482552112e31cac04f110f3bb58fb6c,silver-1.0,135626,134280,1346
+releves_incidents,98941e5d-36b2-4b32-8245-7489c8e2ee87,releves_incidents.csv,be7204b3320a39fa2c58f4be10bc5013fd74ab63aa4a5a5399fb0d151846110a,silver-1.0,1245,1245,0
+machine,98941e5d-36b2-4b32-8245-7489c8e2ee87,machine.sql.txt,9eb877ae806515e852df46dd9f97f31aabfa8420a8f07dc50a5be4cefced8fcb,silver-1.0,15,15,0
+maintenance,98941e5d-36b2-4b32-8245-7489c8e2ee87,machine.sql.txt,9eb877ae806515e852df46dd9f97f31aabfa8420a8f07dc50a5be4cefced8fcb,silver-1.0,115,115,0
