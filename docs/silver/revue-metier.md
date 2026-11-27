@@ -35,12 +35,25 @@ Le lot contient **137 001 lignes** : 135 626 mesures de télémétrie, 1 245 inc
 
 Les trois signaux télémétrie se recouvrent. **41 125 lignes distinctes** portent au moins un de ces signaux. 702 cumulent répétition et dépassement, 67 répétition et champ vide, 775 dépassement et champ vide, dont 19 cumulent les trois. Ces volumes mesurent l’impact d’un filtre potentiel. Ils ne représentent aucun rejet.
 
+## Cas Silver à présenter au métier
+
+Les [constats de similarité du registre](plan-et-decisions.md#incidents-semblables-à-présenter-au-métier) et le [diagnostic exécuté dans le notebook](../../ingestion.ipynb) complètent les volumes Bronze ci-dessus.
+
+| Cas | Constat | Question et traitement actuel |
+| --- | --- | --- |
+| INC-000986 et INC-000987 | Même machine, saisie UTC et contenu métier Silver. Commentaire identique et paires de pseudonymes opérateur différentes. | Plusieurs opérateurs ont-ils déclaré la même anomalie ? Les deux lignes sont conservées. |
+| INC-001052 et INC-001053 | Même machine, saisie UTC et contenu métier Silver. Commentaires et paires de pseudonymes opérateur différents. | Quel identifiant ou élément permet de savoir si les deux anomalies sont distinctes ? Les deux lignes sont conservées. |
+| Incidents saisis à des instants voisins | 35 paires à 5 minutes ou moins, 91 à 15 minutes, 196 à une heure, avec la même machine et les mêmes indicateurs. INC-000107 et INC-000108 sont séparés d’une minute et ont des sévérités 3 et 2. | Est-ce un nouveau signalement, une réévaluation ou une autre anomalie ? Les seuils sont exploratoires et les lignes restent en Silver. |
+| Télémétrie et maintenance | Les clés sont uniques. Deux paires d’heures consécutives d’une même machine sont très proches selon les seuils du registre. Aucun groupe de maintenance sur une même machine au même instant. | Les heures proches de télémétrie représentent deux intervalles. Aucune déduplication supplémentaire. |
+
+La règle « garder la première occurrence dans le CSV » est validée pour les réémissions de télémétrie uniquement. La [règle SIL-11](plan-et-decisions.md#registre-des-décisions) fixe la conservation des quatre incidents similaires. Leur éventuel lien métier reste à établir.
+
 ## Décisions à obtenir pendant la réunion
 
 | Point et lien avec le registre | Réponse concrète attendue | Proposition en attendant la validation |
 | --- | --- | --- |
-| M1 — Grain télémétrie et clés des événements · SIL-05, SIL-06 | Dire ce que représente une ligne. Donner la clé exacte, son périmètre d’unicité et les éventuels identifiants de capteur, de séquence ou de révision. Confirmer aussi les clés des incidents, machines et interventions. | Garder les relevés au même instant. Afficher les groupes pour revue. |
-| M2 — Copies et conflits · SIL-02, SIL-06 | Définir la preuve d’une copie technique, le critère d’occurrence à conserver et la source ou version prioritaire en cas de valeurs contradictoires. Préciser si un conflit peut rester en Silver avec un drapeau. | Conserver les occurrences. Le hash sert à retrouver les cas. |
+| M1 — Grain télémétrie et clés des événements · SIL-05, SIL-06 | Pour la télémétrie, machine et horodatage identifient le relevé. Confirmer les clés et révisions possibles pour les incidents, machines et interventions. | Pour les réémissions de télémétrie, garder la première occurrence du CSV. Conserver les incidents similaires. |
+| M2 — Copies et conflits · SIL-02, SIL-06, SIL-11 | Pour les incidents, identifier une preuve fiable que plusieurs saisies décrivent la même anomalie. | Garder les quatre incidents et les autres paires rapprochées. Le hash permet de retrouver les cas en Bronze. |
 | M3 — Temps · SIL-04 | Nommer le fuseau des deux CSV, le traitement des changements d’heure et la signification de chaque horodatage. Confirmer si la date et l’heure d’incident décrivent le même événement. | Garder les horaires comme enregistrés avec les décalages SQL explicites. |
 | M4 — Unités, capacité, valeurs atypiques · SIL-03, SIL-08 | Confirmer l’unité et la fenêtre de mesure de chaque grandeur, le sens de `pieces_produced` et de la capacité, les régimes concernés et les limites éventuelles. Associer à chaque limite l’action autorisée et un exemple frontière. | Signaler les dépassements. Garder les valeurs et leurs unités sources. |
 | M5 — Absences, conversions et imputation · SIL-03, SIL-07, SIL-08 | Lister les formats et codes d’absence permis par colonne. Distinguer les champs indispensables des champs facultatifs. Si une estimation est souhaitée, préciser la méthode, la durée maximale du trou et les situations où elle est permise. | Garder les absences et les valeurs brutes. Consigner l’écart pour revue. |
@@ -56,8 +69,8 @@ Pour chaque point, enregistrer **validé**, **refusé** ou **en attente**. Une r
 
 | Point | Statut | Règle exacte et périmètre | Responsable métier et date | Exemple, impact et contrôle |
 | --- | --- | --- | --- | --- |
-| M1 | En attente | — | — | — |
-| M2 | En attente | — | — | — |
+| M1 | Télémétrie validée | Même machine et même horodatage : réémission. Première occurrence du CSV retenue. | Confirmation métier relayée dans l’échange | 1 346 réémissions tracées en Silver. Autres clés en revue si un cas survient. |
+| M2 | Conservation validée, lien métier en attente | Garder les quatre incidents similaires sans fusion. | Confirmation relayée dans l’échange | Deux paires exactes hors identifiant. Cas à examiner avec le métier. |
 | M3 | En attente | — | — | — |
 | M4 | En attente | — | — | — |
 | M5 | En attente | — | — | — |

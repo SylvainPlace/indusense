@@ -40,6 +40,7 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 | SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. Les mesures manquantes restent à `NULL`, sans imputation. | Recompter les surcroîts d’activité après sélection de la première occurrence. Vérifier l’alignement sur l’heure UTC qui précède le relevé lors des rapprochements temporels. Documenter tout changement ou toute estimation avant application. |
 | SIL-09 | Validée pour les incidents | `operator_name`, `operator_badge` et `comment` restent uniquement dans Bronze. Le lien de provenance permet de retrouver le commentaire si nécessaire. | Vérifier leur absence des colonnes Silver et des échantillons Silver publiés. |
 | SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
+| SIL-11 | Conservation validée, lien entre incidents à examiner | Garder les quatre incidents qui se ressemblent sans modification. Les autres paires rapprochées restent elles aussi visibles. Un horaire de saisie commun ou proche ne suffit pas à établir une identité d’événement. | Exemples et comptages enregistrés dans le notebook. Comparer l’identité réelle des incidents avec le métier. |
 
 ## Précisions métier sur les mesures et les horodatages
 
@@ -201,7 +202,14 @@ Sur le lot Bronze `98941e5d-36b2-4b32-8245-7489c8e2ee87`, deux paires ont le mê
 
 En excluant les saisies au même instant, le contrôle retrouve **35 paires à 5 minutes ou moins**, **91 à 15 minutes ou moins** et **196 à une heure ou moins**, sur une même machine et avec les mêmes indicateurs. Les volumes sont cumulatifs et une ligne peut appartenir à plusieurs paires. Par exemple, `INC-000107` et `INC-000108` sont saisis à une minute d’intervalle sur `MACH-03`, avec des sévérités 3 et 2. C’est un cas à discuter, sans retrait ni fusion automatique.
 
-Aucun groupe d’interventions de maintenance sur une même machine au même instant n’a été détecté.
+### Contrôles complémentaires sur le même lot
+
+- Les clés contrôlées sont uniques dans les quatre tables : machine/horodatage pour les 134 280 relevés Silver, identifiant pour les 1 245 incidents et les 115 maintenances, code pour les 15 machines. Dans les référentiels machine et maintenance, aucun contenu métier entièrement identique hors identifiant n’a été trouvé.
+- Sur 131 116 paires complètes d’heures consécutives d’une même machine, deux passent les seuils exploratoires suivants : au plus 0,1 °C, 0,1 bar, 0,5 V et 10 tr/min d’écart, avec le même nombre de pièces. En doublant ces seuils, le contrôle retrouve 30 paires. Aucune mesure complète ne répète à l’identique les cinq valeurs sur la même machine hors horodatage. Les relevés comparés couvrent des heures distinctes et restent en Silver.
+- Exemple de télémétrie : sur MACH-15, le 22 août 2025 à 05:00 puis à 06:00 UTC, les températures sont 57,554 et 57,534 °C et le nombre de pièces est de 61 pour chacun des deux intervalles.
+- Aucun groupe d’interventions de maintenance sur une même machine au même instant n’a été détecté.
+
+Les seuils de proximité servent uniquement à illustrer les ressemblances. Les quatre incidents, les paires rapprochées et les relevés de télémétrie sont conservés. Les contrôles ont été effectués en lecture seule.
 
 ## Ordre de réalisation et livrables
 
