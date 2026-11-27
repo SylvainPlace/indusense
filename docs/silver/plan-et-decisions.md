@@ -188,6 +188,21 @@ Après sélection de la première occurrence, le lot de télémétrie contient 1
 
 Le [notebook](../../ingestion.ipynb) exécute le traitement du contrat `silver-1.0`. Les tables complètes sont en PostgreSQL et les [artefacts du lot](../../artifacts/silver/silver-1.0/) rassemblent le manifeste, les réémissions, les périodes, un échantillon et le rapport qualité. Les données Bronze restent consultables avec leur lot et leur hash.
 
+## Incidents semblables à présenter au métier
+
+Sur le lot Bronze `98941e5d-36b2-4b32-8245-7489c8e2ee87`, deux paires ont le même contenu métier en Silver en dehors de leur identifiant. **Les quatre lignes sont conservées sans modification.** Le [notebook](../../ingestion.ipynb) montre les résultats du contrôle de similarité en lecture seule.
+
+| Incidents | Machine | Heure de saisie UTC | Sévérité | Constat en Bronze |
+| --- | --- | --- | ---: | --- |
+| `INC-000986`, `INC-000987` | `MACH-13` | 26 mars 2026 à 15:11 | 3 | Même commentaire. Deux paires de pseudonymes opérateur différentes. |
+| `INC-001052`, `INC-001053` | `MACH-05` | 11 avril 2026 à 23:38 | 3 | Commentaires et paires de pseudonymes opérateur différents. |
+
+À demander au métier : les opérateurs ont-ils saisi plusieurs signalements pour une même anomalie, ou ont-ils signalé des anomalies distinctes ? Préciser le signal fiable qui permettrait de relier deux incidents. L’heure enregistrée est celle de la saisie. La règle de réémission de la télémétrie ne s’applique pas aux incidents.
+
+En excluant les saisies au même instant, le contrôle retrouve **35 paires à 5 minutes ou moins**, **91 à 15 minutes ou moins** et **196 à une heure ou moins**, sur une même machine et avec les mêmes indicateurs. Les volumes sont cumulatifs et une ligne peut appartenir à plusieurs paires. Par exemple, `INC-000107` et `INC-000108` sont saisis à une minute d’intervalle sur `MACH-03`, avec des sévérités 3 et 2. C’est un cas à discuter, sans retrait ni fusion automatique.
+
+Aucun groupe d’interventions de maintenance sur une même machine au même instant n’a été détecté.
+
 ## Ordre de réalisation et livrables
 
 1. Capturer le manifeste et le portrait Bronze. Prouver les volumes, les SHA‑256, les absences et les répétitions du lot choisi.
