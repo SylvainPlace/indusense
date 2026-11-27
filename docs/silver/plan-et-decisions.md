@@ -1,8 +1,8 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 1.0 · 27 novembre 2026 · Contrat du Silver du lot observé
+Version du dossier : 1.1 · 27 novembre 2026 · Contrat appliqué : silver-1.0
 
-Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Le diagnostic n’a écarté aucune ligne. L’étape Silver applique uniquement les règles validées ci-dessous.
+Ce dossier distingue les règles appliquées au lot Silver, les contrôles exploratoires et les décisions encore attendues. Les constats portent sur le lot du 27 novembre. Le Bronze a été diagnostiqué en lecture seule. Le Silver est déjà chargé dans PostgreSQL.
 
 ## Diagnostic disponible dans le notebook
 
@@ -30,16 +30,16 @@ Le diagnostic vérifie les formats sondés, les clés candidates, les référenc
 
 | ID | Statut | Décision et raison | Preuve à produire |
 | --- | --- | --- | --- |
-| SIL-01 | Proposée | Transformer un lot Bronze identifié par son `run_id`. Relever au départ son historique, les SHA‑256 des sources, les volumes et la version du traitement. Cela permet de comparer le résultat au lot réellement lu. | Manifeste par lot et par table, rapprochement avec `bronze.ingestion_runs`. |
-| SIL-02 | Proposée | Conserver dans Silver la provenance de chaque ligne via la table source, le `run_id` et le hash Bronze. Deux copies exactes peuvent partager ces valeurs. Pour leur audit, compter les occurrences et documenter l’éventuel rang utilisé dans le lot. | Exemple de remontée d’une ligne et registre indiquant la multiplicité des copies. |
-| SIL-03 | Proposée | Garder les identifiants sous forme de texte et convertir les mesures, dates et indicateurs selon le dictionnaire, avec les unités source connues. Conserver l’accès aux valeurs d’origine par le lien Bronze. Une conversion impossible reçoit un motif explicite. | Dictionnaire complet, exemples avant/après et journal des erreurs de conversion. |
+| SIL-01 | Appliquée au lot | Vérifier le volume du lot Bronze et conserver son identifiant, le SHA‑256 des sources et la version du contrat dans le manifeste Silver. | Quatre entrées du manifeste concordent avec les tables et l’historique Bronze. |
+| SIL-02 | Appliquée au lot | Conserver le lot et le hash Bronze par ligne. Pour la télémétrie, conserver aussi le numéro d’enregistrement du CSV. | Le journal relie chaque réémission à l’occurrence conservée. |
+| SIL-03 | Appliquée pour les formats du lot | Garder les identifiants en texte et convertir les valeurs selon le contrat. Une valeur non vide à convertir qui ne respecte pas le format bloque la publication du lot pour revue. | Types PostgreSQL et provenance vérifiés dans le notebook. Les extensions du contrat restent soumises à validation. |
 | SIL-04 | UTC et instant de saisie confirmés | Les deux CSV utilisent UTC. Combiner la date et l’heure des incidents dans un horodatage de saisie UTC. Séparer la saisie, le relevé et l’ingestion. Pour la maintenance, exploiter les décalages déjà explicites. | Vérifier qu’un horaire UTC garde la même heure et que l’horodatage d’incident est nommé comme un instant de saisie. |
-| SIL-05 | Validée pour telemetry.csv | Dans ce fichier, un même couple `(machine_id, timestamp)` représente une réémission. Garder la première occurrence dans l’ordre du CSV, même si les valeurs ultérieures diffèrent. | Vérifier le SHA‑256 du CSV, retrouver l’ordre source et journaliser les 1 346 réémissions attendues sur le lot observé. |
+| SIL-05 | Appliquée à telemetry.csv | Dans ce fichier, un même couple `(machine_id, timestamp)` représente une réémission. Garder la première occurrence dans l’ordre du CSV, même si les valeurs ultérieures diffèrent. | SHA‑256 et ordre du CSV vérifiés : 134 280 relevés conservés et 1 346 réémissions journalisées. |
 | SIL-06 | Règle télémétrie validée, autres sources à revoir au cas par cas | La télémétrie applique SIL-05. Une copie ou un conflit dans une autre source fait l’objet d’une revue avant toute exclusion. | Tracer la ligne conservée et les réémissions. Vérifier que les autres sources ne subissent aucune déduplication automatique. |
-| SIL-07 | Maintien des relevés et absence d’imputation validés | Une clé inutilisable ou une référence machine inconnue est signalée et n’entraîne pas d’exclusion automatique. Une maintenance sans incident associé est valide, avec `related_incident_id` à `NULL` et sans signalement. Conserver les relevés avec mesures manquantes à `NULL`, sans imputation, et tracer les périodes. | Vérifier les motifs, les lignes conservées et le traitement des références facultatives. |
-| SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. Les mesures manquantes restent à `NULL`, sans imputation. | Recompter les surcroîts d’activité après sélection de la première occurrence. Vérifier l’alignement sur l’heure UTC qui précède le relevé lors des rapprochements temporels. Documenter tout changement ou toute estimation avant application. |
+| SIL-07 | Maintien des relevés et absence d’imputation validés | Une clé inutilisable ou une référence machine inconnue est signalée et n’entraîne pas d’exclusion automatique. Une maintenance sans incident associé est valide, avec `related_incident_id` à `NULL` et sans signalement. Conserver les relevés avec mesures manquantes à `NULL`, sans imputation, et tracer les périodes. | 2 793 relevés incomplets conservés, 364 périodes tracées et 90 maintenances sans incident conservées sans signalement. |
+| SIL-08 | Fenêtre horaire et interprétation confirmées | Le nombre de pièces produites par heure est comparable à la capacité horaire déclarée. Un dépassement indique un surcroît d’activité et la ligne est conservée. Les mesures manquantes restent à `NULL`, sans imputation. | 36 784 surcroîts d’activité après sélection de la première occurrence. Aucun retrait. Les rapprochements utilisent l’heure qui précède le relevé UTC. |
 | SIL-09 | Validée pour les incidents | `operator_name`, `operator_badge` et `comment` restent uniquement dans Bronze. Le lien de provenance permet de retrouver le commentaire si nécessaire. | Vérifier leur absence des colonnes Silver et des échantillons Silver publiés. |
-| SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
+| SIL-10 | Silver et artefacts produits, publication GitHub à faire | Le lot Silver complet est chargé dans PostgreSQL. Le notebook exécuté, le manifeste, les registres, le rapport et l’échantillon sont versionnés sur la branche de travail. | Liens et volumes vérifiés contre PostgreSQL. |
 | SIL-11 | Conservation validée, lien entre incidents à examiner | Garder les quatre incidents qui se ressemblent sans modification. Les autres paires rapprochées restent elles aussi visibles. Un horaire de saisie commun ou proche ne suffit pas à établir une identité d’événement. | Exemples et comptages enregistrés dans le notebook. Comparer l’identité réelle des incidents avec le métier. |
 
 ## Précisions métier sur les mesures et les horodatages
@@ -54,6 +54,12 @@ Le diagnostic peut repérer, compter et illustrer les écarts en lecture seule. 
 
 Pour chaque règle proposée, présenter le lot concerné, le filtre exact, des exemples repérables par table, run_id et hash Bronze, le volume touché, l’effet attendu et l’option de conserver les données en l’état. Enregistrer la décision métier avec le responsable, la date, le périmètre, le statut et la version de la règle. Si le responsable ou le critère manque, la règle reste en attente.
 
+## Traitement des conversions impossibles
+
+Une mesure vide reconnue comme absente reste à `NULL`. Une clé manquante ou une référence inconnue peut être signalée sans écarter sa ligne. Si une **valeur non vide qui doit être convertie** est illisible selon le contrat, le traitement indique le champ et la valeur et bloque la publication du lot. Il ne substitue aucune valeur et n’écarte aucune ligne sur ce motif. Les sources restent en Bronze.
+
+Une erreur de préparation empêche l’écriture. En cas d’échec dans la transaction PostgreSQL, les écritures Silver sont annulées et les tables précédemment publiées restent en place. La reprise exige une décision métier sur le cas puis un rejeu du lot.
+
 ## Motifs à examiner avec le métier
 
 | Code | Déclencheur et constat | Décision à faire valider |
@@ -65,13 +71,15 @@ Pour chaque règle proposée, présenter le lot concerné, le filtre exact, des 
 | CONVERSION_IMPOSSIBLE | Une valeur non vide échoue à la conversion proposée, par exemple une mesure textuelle hors du format convenu. | Valider le format, les codes spéciaux et le caractère obligatoire du champ. Toute correction, substitution par NULL ou exclusion exige une décision explicite. |
 | VALEUR_IMPOSSIBLE | Une mesure enfreint une limite physique ou métier explicitement validée, dans l’unité et le contexte convenus. | Faire valider la limite, les régimes concernés et l’action. Une valeur rare ou un dépassement de capacité présumée déclenche une revue. |
 
-Les constats suivants restent visibles dans le diagnostic Bronze. Le retrait des réémissions a été validé pour le futur Silver. Le diagnostic n’a retiré aucune ligne.
+Le diagnostic Bronze a conservé toutes les lignes. Le traitement Silver a appliqué la règle validée aux réémissions de télémétrie uniquement.
 
-- Les 2 686 lignes réparties dans 1 340 groupes de réémissions restent visibles en Bronze. La règle validée produirait 1 346 lignes écartées du Silver et 134 280 relevés conservés. L’ordre du CSV doit être vérifié à partir du fichier correspondant au SHA‑256 du lot.
-- Les 37 136 dépassements de la capacité horaire déclarée restent visibles. Il faut d’abord confirmer la période couverte par le nombre de pièces et la portée de la capacité.
+- Les 2 686 lignes réparties dans 1 340 groupes de réémissions restent visibles en Bronze. Après vérification du SHA‑256 et de l’ordre du CSV, 1 346 réémissions ont été écartées du Silver et 134 280 relevés conservés.
+- Le diagnostic Bronze comptait 37 136 dépassements. En Silver, 36 784 relevés sont signalés comme surcroît d’activité au regard de la capacité nominale horaire. Tous sont conservés.
 - Les valeurs vides en télémétrie et les dates absentes du script SQL restent en l’état. Une absence dans un champ facultatif ne suffit pas à écarter une ligne.
 
 ## Bilan des lignes après validation des règles
+
+Pour le lot publié : **137 001 lignes Bronze = 135 655 lignes Silver + 1 346 réémissions écartées**. Aucune exclusion pour conflit ni quarantaine n’a été appliquée. Le [rapport qualité](../../artifacts/silver/silver-1.0/rapport.md) détaille le rapprochement par table.
 
 | Statut | Quand l’utiliser | Ce qu’il faut conserver |
 | --- | --- | --- |
@@ -179,7 +187,7 @@ Les incidents sont saisis par les opérateurs. Pour leurs neuf indicateurs, 1 si
 | `bronze_hash` depuis `hash` | `TEXT` | Recopier le hash Bronze. Les lignes identiques peuvent le partager. Valider un identifiant d’occurrence si le suivi doit distinguer deux copies exactes. |
 | Colonnes `_type` du Bronze | Étiquettes de provenance | Conserver leur accès dans Bronze. Les types PostgreSQL du Silver seront définis par le contrat approuvé. |
 | `incident_recorded_at_utc` depuis `date` et `time` | `TIMESTAMP WITH TIME ZONE` | Proposer un horodatage combiné de la saisie. Pour une analyse temporelle, vérifier à quel moment cette information était disponible. |
-| Date et SHA‑256 du lot d’entrée | `TIMESTAMP WITH TIME ZONE` et `TEXT` | Reprendre le manifeste de lot pour tracer l’ingestion. La date métier reste distincte de la date de chargement. |
+| Date et SHA‑256 du lot d’entrée | `TIMESTAMP WITH TIME ZONE` et `TEXT` | Reprendre le manifeste de lot pour tracer l’ingestion. La date métier reste distincte de la date de chargement. Le manifeste Silver conserve le SHA‑256. La date de chargement Bronze se retrouve dans `bronze.ingestion_runs` en reliant le lot et la table. |
 
 Les domaines déclarés dans le script et les valeurs observées sont des éléments de discussion. Pour chaque règle approuvée, renseigner dans le registre le responsable, la date, le périmètre, la preuve et la version du contrat.
 
