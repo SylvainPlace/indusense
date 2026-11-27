@@ -1,8 +1,8 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.1 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.2 · 27 novembre 2026 · Plan avant implémentation
 
-Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves.
+Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
 
 ## Portrait de départ
 
@@ -35,18 +35,39 @@ Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Le
 | SIL-09 | Proposée | Conserver la pseudonymisation en Silver. Relire les champs libres avant publication et limiter les échantillons publics aux champs utiles à la vérification. | Contrôle de l’échantillon publié et absence de noms ou badges source en clair. |
 | SIL-10 | Proposée | Publier le Silver via une branche de travail et une PR. Versionner le contrat, les règles, les artefacts et les résultats du notebook, en les rattachant au lot d’entrée. Le dataset complet sera produit dans PostgreSQL, avec un échantillon vérifiable dans Git. | Commit, identifiant du lot, artefacts lisibles et étapes de reproduction. |
 
-## Motifs et bilan des lignes
+## Validation métier avant toute modification
 
-Prévoir quatre statuts mutuellement exclusifs. Un drapeau signale un point à examiner et peut accompagner une ligne retenue.
+Le diagnostic peut repérer, compter et illustrer les écarts en lecture seule. Il marque les cas **à valider**. Toute règle qui change une valeur, son interprétation ou la composition du jeu Silver doit être discutée avec le métier et recevoir un accord explicite avant application. Cela couvre le typage avec perte, la déduplication, la quarantaine, l’imputation, la conversion d’unité, l’attribution d’un fuseau et la sélection d’une version en cas de conflit. En attendant cet accord, les lignes et leurs valeurs sont conservées dans Bronze et les propositions restent dans le rapport.
+
+Pour chaque règle proposée, présenter le lot concerné, le filtre exact, des exemples repérables par table, run_id et hash Bronze, le volume touché, l’effet attendu et l’option de conserver les données en l’état. Enregistrer la décision métier avec le responsable, la date, le périmètre, le statut et la version de la règle. Si le responsable ou le critère manque, la règle reste en attente.
+
+## Motifs à examiner avec le métier
+
+| Code | Déclencheur et constat | Décision à faire valider |
+| --- | --- | --- |
+| COPIE_EXACTE | Même clé métier validée et même contenu source. Un hash répété sert à repérer les candidats, puis le contenu est comparé. Aucun hash de ligne répété dans le lot observé. | Confirmer que les lignes sont des réémissions du même événement. Définir quelle occurrence conserver et comment tracer les autres avant tout retrait. |
+| CONFLIT_CLE | Même clé métier validée et contenus différents. | Déterminer si ce sont des révisions ou plusieurs événements. Désigner la source ou la version de référence. Toute mise à l’écart du jeu Silver demande un accord métier. |
+| CLE_ABSENTE_OU_INVALIDE | Un champ indispensable manque ou son format empêche d’identifier l’événement, par exemple une date non interprétable. Un identifiant textuel avec des zéros initiaux ne relève pas de ce cas. | Valider les champs indispensables, leurs formats et les cas où l’on peut retrouver la clé. Définir quand la mise en quarantaine est justifiée. |
+| REFERENCE_INCONNUE | Une référence renseignée ne correspond à aucun enregistrement du référentiel. Les 25 références d’incident renseignées en maintenance correspondent sur le lot observé. | Confirmer que le référentiel couvre le lot et définir les cas où une référence manquante rend la ligne inutilisable. Une référence facultative laissée vide relève d’un manquant. |
+| CONVERSION_IMPOSSIBLE | Une valeur non vide échoue à la conversion proposée, par exemple une mesure textuelle hors du format convenu. | Valider le format, les codes spéciaux et le caractère obligatoire du champ. Toute correction, substitution par NULL ou exclusion exige une décision explicite. |
+| VALEUR_IMPOSSIBLE | Une mesure enfreint une limite physique ou métier explicitement validée, dans l’unité et le contexte convenus. | Faire valider la limite, les régimes concernés et l’action. Une valeur rare ou un dépassement de capacité présumée déclenche une revue. |
+
+Trois situations observées sont **des signaux à examiner**. Le plan n’en déduit aucun retrait :
+
+- Les 2 686 lignes qui partagent l’un des 1 340 couples machine/horodatage répétés restent visibles. Il faut d’abord confirmer ce qu’une ligne de télémétrie représente.
+- Les 37 136 dépassements de la capacité horaire déclarée restent visibles. Il faut d’abord confirmer la période couverte par le nombre de pièces et la portée de la capacité.
+- Les valeurs vides en télémétrie et les dates absentes du script SQL restent en l’état. Une absence dans un champ facultatif ne suffit pas à écarter une ligne.
+
+## Bilan des lignes après validation des règles
 
 | Statut | Quand l’utiliser | Ce qu’il faut conserver |
 | --- | --- | --- |
-| Retenue | Ligne exploitable, éventuellement avec des mesures manquantes ou un signal à examiner. | Provenance, champs typés et drapeaux éventuels. |
-| Copie écartée | Même clé validée et contenu identique. | Occurrence retenue, nombre de copies et comparaison utilisée. |
-| Conflit | Même clé validée, contenus différents et aucune règle de priorité applicable. | Valeurs contradictoires ou lien Bronze, règle concernée et décision attendue. |
-| Quarantaine | Clé obligatoire absente ou non convertible, ou autre motif bloquant validé. | Colonne, valeur source ou lien Bronze, règle et raison de l’exclusion. |
+| Retenue | Ligne retenue selon le contrat. Un drapeau peut signaler un point encore en revue. | Provenance, valeurs et drapeaux éventuels. |
+| Copie écartée | Copie visée par une règle de déduplication validée. | Occurrence retenue, comparaison, nombre de copies et référence à l’accord métier. |
+| Conflit non retenu | Cas mis en attente hors du jeu Silver selon une règle validée. | Valeurs contradictoires ou lien Bronze, règle, version et décision attendue. |
+| Quarantaine | Cas visé par un motif bloquant validé. | Colonne, valeur source ou lien Bronze, raison, règle et référence à l’accord métier. |
 
-À vérifier par table et par lot : **lignes Bronze reçues = retenues + copies écartées + conflits + quarantaine**. Une ligne retenue signalée pour revue est comptée une seule fois. Le rapport indiquera aussi les raisons pour lesquelles certains cas restent en attente.
+À vérifier par table et par lot : **lignes Bronze reçues = retenues + copies écartées + conflits non retenus + quarantaine**. Le statut « à valider » est un drapeau de revue. Il n’entre pas dans les exclusions et une ligne retenue qui le porte compte une seule fois.
 
 ## Questions métier à valider
 
@@ -64,7 +85,7 @@ Les réponses sont à consigner avec la date, la personne ou la source qui les v
 
 1. Capturer le manifeste et le portrait Bronze. Prouver les volumes, les SHA‑256, les absences et les répétitions du lot choisi.
 2. Compléter le dictionnaire par colonne et annoter les règles validées ou suspendues. Donner une version au contrat avant de typer les données.
-3. Exécuter les transformations et la qualification des quatre tables. Afficher dans le notebook le code appliqué, des valeurs avant/après et des exemples de décisions traçables.
+3. Exécuter les transformations approuvées par le métier et qualifier les quatre tables. Afficher dans le notebook le code appliqué, des valeurs avant/après et des exemples de décisions traçables.
 4. Générer le journal des transformations, les registres de copies, conflits et quarantaines, ainsi que la liste des cas à revoir. Un registre vide doit dire clairement que le contrôle a été exécuté.
 5. Produire le rapport qualité et un échantillon Silver versionné. Comparer les volumes et les manquants avant/après, expliquer les écarts et enregistrer la version du contrat et du traitement.
 6. Vérifier les artefacts depuis un noyau neuf, puis ouvrir la PR avec le notebook exécuté et les documents de suivi.
