@@ -1,6 +1,6 @@
 # Indusense — plan et décisions Bronze vers Silver
 
-Version du dossier : 0.3 · 27 novembre 2026 · Plan avant implémentation
+Version du dossier : 0.4 · 27 novembre 2026 · Plan avant implémentation
 
 Ce dossier fixe les choix à discuter avant d’écrire le traitement Silver. Les constats ci-dessous ont été mesurés sur le Bronze disponible le 27 novembre. Une décision **proposée** doit encore être relue. Une question **ouverte** demande une réponse métier. Chaque modification du contrat sera datée et reliée à son motif et à ses preuves. Aucune ligne n’a été écartée et aucune transformation Silver n’a été appliquée.
 
@@ -86,6 +86,91 @@ Trois situations observées sont **des signaux à examiner**. Le plan n’en dé
 | Périodes sans mesure | Dispose-t-on des états machine et d’une durée maximale d’estimation validée ? | Conserver les trous. |
 
 Les réponses sont à consigner avec la date, la personne ou la source qui les valide, les règles concernées et l’effet sur les résultats déjà produits.
+
+## Dictionnaire Silver proposé
+
+**Statut commun : à valider avec le métier.** Les types indiqués sont des cibles PostgreSQL. Les unités tirées des noms de colonnes sont des indices à confirmer. « — » signifie qu’aucune unité physique ne s’applique. Les noms cibles restent ceux des sources, sauf proposition explicite. Le dictionnaire couvre les 47 colonnes sources. Il ne déclenche aucun chargement, changement de valeur ou retrait de ligne.
+
+Le diagnostic distingue les chaînes vides de `NULL` et conserve les textes tels quels. Avant toute conversion, le métier doit confirmer les formats, les codes d’absence et les champs obligatoires. Une valeur illisible pourra être signalée avec sa provenance. Son remplacement ou son exclusion demande une règle approuvée.
+
+### Relevés d’incidents — 18 colonnes
+
+| Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
+| --- | --- | --- | --- | --- |
+| `incident_id` | `TEXT` | — | Garder le code intact, zéros compris. Clé candidate de l’incident. | Unicité entre lots, réouvertures et révisions d’un incident. |
+| `date` | `DATE` | `AAAA-MM-JJ` | Interpréter la date civile. Conserver la provenance Bronze. | Date de survenue, de constat ou de saisie. |
+| `time` | `TIME WITHOUT TIME ZONE` | `HH:MM` | Interpréter l’heure à la précision de la minute. | Horloge source, fuseau et changement d’heure. |
+| `operator_name` | `TEXT` | Pseudonyme SHA‑256 salé | Garder le pseudonyme Bronze si l’usage le justifie. | Utilité analytique, accès et politique de publication. |
+| `machine_id` | `TEXT` | Code machine | Garder le texte. Proposer le rapprochement avec `machine.machine_code`. | Stabilité du code et traitement des références inconnues. |
+| `severity` | `SMALLINT` | Score ordinal, valeurs observées 2 à 5 | Lire le score entier. Conserver la valeur et signaler les codes hors du domaine approuvé. | Échelle complète, définition de chaque niveau et sens de l’ordre. |
+| `operator_badge` | `TEXT` | Pseudonyme SHA‑256 salé | Garder le pseudonyme Bronze si nécessaire. Éviter de déduire l’identité à partir du badge seul. | Badges partagés ou réattribués, finalité et accès. |
+| `comment` | `TEXT` | Texte libre | Conserver le texte dans un usage autorisé. Relire avant toute publication. | Données identifiantes éventuelles, accès et intérêt métier. |
+| `shift` | `TEXT` | Code de poste | Garder les codes observés `matin`, `apres-midi`, `nuit`. | Horaires, postes traversant minuit et référentiel de libellés. |
+| `type_surchauffe` | `BOOLEAN` | Indicateur `0/1` | Proposer `1 → true`, `0 → false`, valeur absente conservée comme inconnue. | Critère de surchauffe et sens d’un zéro. |
+| `type_baisse_pression` | `BOOLEAN` | Indicateur `0/1` | Appliquer la même proposition de conversion binaire. | Seuil ou constat qui déclenche la baisse de pression. |
+| `type_vibration` | `BOOLEAN` | Indicateur `0/1` | Traiter comme indicateur d’incident, sans en déduire une mesure de vibration. | Signalement opérateur, diagnostic ou alerte de capteur. |
+| `type_bruit_mecanique` | `BOOLEAN` | Indicateur `0/1` | Appliquer la proposition de conversion binaire. | Définition du bruit anormal et fiabilité du signalement. |
+| `type_surconsommation` | `BOOLEAN` | Indicateur `0/1` | Appliquer la proposition de conversion binaire. | Grandeur de référence et période d’observation. |
+| `type_blocage_mecanique` | `BOOLEAN` | Indicateur `0/1` | Appliquer la proposition de conversion binaire. | Définition d’un blocage et lien avec l’arrêt machine. |
+| `type_alarme_capteur` | `BOOLEAN` | Indicateur `0/1` | Garder l’indicateur sans déduire la cause de l’alarme. | Distinction entre une alarme valide et un défaut de capteur. |
+| `type_arret_urgence` | `BOOLEAN` | Indicateur `0/1` | Garder l’indicateur sans en déduire la durée de l’arrêt. | Arrêt déclenché ou confirmé, et règle de codage du zéro. |
+| `type_defaut_qualite` | `BOOLEAN` | Indicateur `0/1` | Appliquer la proposition de conversion binaire. | Critère de défaut qualité et possibilité de plusieurs indicateurs par incident. |
+
+### Télémétrie — 7 colonnes
+
+| Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
+| --- | --- | --- | --- | --- |
+| `machine_id` | `TEXT` | Code machine | Garder le code. Rapprocher du référentiel avec la correspondance approuvée. | Stabilité du code et présence éventuelle d’un identifiant de capteur. |
+| `timestamp` | `TIMESTAMP WITHOUT TIME ZONE` | Date et heure à la seconde, fuseau absent | Préserver l’heure enregistrée. Signaler les couples machine/heure répétés pour revue. | Fuseau, instant de mesure ou de réception, cadence et clé réelle d’un relevé. |
+| `temperature_c` | `NUMERIC` | °C d’après le nom | Lire le décimal sans arrondi. Garder les absences et les pics visibles. | Unité, emplacement du capteur, précision et plages par régime. |
+| `pressure_bar` | `NUMERIC` | bar d’après le nom | Lire le décimal sans conversion d’unité. | Pression absolue ou relative, précision et limites par équipement. |
+| `voltage_mean_v` | `NUMERIC` | V d’après le nom | Lire la moyenne fournie, sans la recalculer. | Fenêtre de moyenne, tension mesurée et unité. |
+| `rotation_mean_rpm` | `NUMERIC` | tr/min d’après le nom | Lire la moyenne fournie, sans imputer les valeurs vides. | Fenêtre de moyenne, sens de zéro et régime machine. |
+| `pieces_produced` | `BIGINT` | Nombre entier de pièces, période inconnue | Lire le compteur entier. Signaler les dépassements de capacité déclarée pour revue. | Compteur cumulatif ou volume par période, remises à zéro et comparabilité à la capacité horaire. |
+
+### Référentiel machine — 11 colonnes
+
+| Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
+| --- | --- | --- | --- | --- |
+| `machine_code` | `TEXT` | Code machine | Garder la clé primaire déclarée dans le SQL sous forme de texte. | Réutilisation des codes et rapprochement historique. |
+| `commissioning_date` | `DATE` | `AAAA-MM-JJ` | Lire la date de mise en service déclarée. | Date de première mise en service ou de remise en service. |
+| `max_daily_capacity` | `INTEGER` | Capacité par jour, unité à confirmer | Lire l’entier déclaré. Utiliser la contrainte source positive comme point à vérifier. | Pièces par jour ou autre unité, régime de référence et capacité nominale. |
+| `max_hourly_capacity_pieces` | `INTEGER` | Pièces/heure d’après le nom | Lire l’entier déclaré. Le comparer à la télémétrie à titre de diagnostic. | Limite physique ou cadence nominale, conditions et période de comparaison. |
+| `model` | `TEXT` | Code ou libellé de modèle | Conserver le libellé source. Poser les regroupements en revue. | Catalogue des modèles et équivalences de libellés. |
+| `production_line` | `TEXT` | Code de ligne de production | Garder le code. | Affectations successives et dates de validité. |
+| `location` | `TEXT` | Code ou libellé de localisation | Garder la localisation déclarée. | Niveau du référentiel et suivi des déplacements. |
+| `criticality` | `TEXT` | Codes SQL `LOW`, `MEDIUM`, `HIGH` | Conserver les codes déclarés. Documenter les codes inattendus. | Sens des niveaux et validité dans le temps. |
+| `is_active` | `BOOLEAN` | État déclaré, absent des `INSERT` du lot | Lire un état explicite s’il existe. Conserver l’absence actuelle. | Définition de « active », date de référence et usage éventuel du défaut SQL. |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | Horaire SQL avec fuseau, absent du lot | Interpréter seulement un horodatage explicite. | Sémantique de création et disponibilité d’une date source fiable. |
+| `updated_at` | `TIMESTAMP WITH TIME ZONE` | Horaire SQL avec fuseau, absent du lot | Interpréter seulement un horodatage explicite. | Sémantique de mise à jour et règle pour les versions successives. |
+
+### Maintenance — 11 colonnes
+
+| Colonne Bronze | Type Silver proposé | Unité ou format source | Règle proposée | À valider avec le métier |
+| --- | --- | --- | --- | --- |
+| `maintenance_id` | `TEXT` | Identifiant déclaré entier dans le SQL | Garder l’identifiant comme code. Clé primaire déclarée. | Unicité entre extractions et révisions d’une intervention. |
+| `machine_code` | `TEXT` | Code machine | Garder la référence déclarée vers `machine.machine_code`. | Traitement d’une intervention dont la machine est inconnue. |
+| `maintenance_at` | `TIMESTAMP WITH TIME ZONE` | Décalage explicite dans la source | Interpréter le décalage pour comparer les instants. Garder le texte original accessible dans Bronze. | Début, fin ou date de saisie de l’intervention. |
+| `maintenance_type` | `TEXT` | Codes SQL `proactive`, `reactive` | Garder le code déclaré. Signaler les valeurs hors vocabulaire approuvé. | Définitions, autres catégories et recodage éventuel. |
+| `action_type` | `TEXT` | Code d’action | Garder le code. | Catalogue des actions et regroupements autorisés. |
+| `component` | `TEXT` | Libellé de composant | Garder le texte, accents compris. | Référentiel équipement et correspondances entre libellés. |
+| `description` | `TEXT` | Texte libre | Conserver le texte dans un usage autorisé. Relire avant publication. | Données identifiantes éventuelles, accès et intérêt métier. |
+| `related_incident_id` | `TEXT` | Référence facultative | Garder les codes renseignés. Une absence ne désigne aucun incident. | Couverture du lien, caractère facultatif et gestion des références inconnues. |
+| `duration_hours` | `NUMERIC` | Heures, précision SQL à deux décimales | Lire la durée en heures sans arrondi supplémentaire. | Durée d’intervention ou d’arrêt, recouvrements et traitement des valeurs atypiques. |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | Horaire SQL avec fuseau, absent du lot | Conserver l’absence en attendant une valeur explicite. | Horodatage de création de l’intervention ou de son enregistrement. |
+| `updated_at` | `TIMESTAMP WITH TIME ZONE` | Horaire SQL avec fuseau, absent du lot | Conserver l’absence en attendant une valeur explicite. | Horodatage fiable pour départager des révisions. |
+
+### Champs techniques et dérivations proposées
+
+| Provenance ou champ cible | Type proposé | Règle et point à valider |
+| --- | --- | --- |
+| `bronze_run_id` depuis `run_id` | `UUID` | Conserver le lien avec `bronze.ingestion_runs` et confirmer la politique d’historique Bronze. |
+| `bronze_hash` depuis `hash` | `TEXT` | Recopier le hash Bronze. Les lignes identiques peuvent le partager. Valider un identifiant d’occurrence si le suivi doit distinguer deux copies exactes. |
+| Colonnes `_type` du Bronze | Étiquettes de provenance | Conserver leur accès dans Bronze. Les types PostgreSQL du Silver seront définis par le contrat approuvé. |
+| `occurred_at_local` depuis `date` et `time` | `TIMESTAMP WITHOUT TIME ZONE` | Proposer un horodatage d’incident combiné. Confirmer le sens des deux champs et le fuseau avant toute normalisation. |
+| Date et SHA‑256 du lot d’entrée | `TIMESTAMP WITH TIME ZONE` et `TEXT` | Reprendre le manifeste de lot pour tracer l’ingestion. La date métier reste distincte de la date de chargement. |
+
+Les domaines déclarés dans le script et les valeurs observées sont des éléments de discussion. Pour chaque règle approuvée, renseigner dans le registre le responsable, la date, le périmètre, la preuve et la version du contrat.
 
 ## Ordre de réalisation et livrables
 
